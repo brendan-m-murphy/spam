@@ -10,6 +10,10 @@ DATA_PATH = os.path.join('..', '..', 'data')
 RAW_PATH = os.path.join(DATA_PATH, 'raw')
 INT_PATH = os.path.join(DATA_PATH, 'interim')
 
+# path to reference docs
+REF_PATH = os.path.join('..', '..', 'references')
+
+
 def download_data():
     """
     Download Apache spamassassin data and unzip it raw data directory.
@@ -20,20 +24,25 @@ def download_data():
     response = requests.get(DL_ROOT)
     pat = re.compile('<a href=[\'"]([\w\._]+)["\']([\w\._]+)</a>')
     links = [match.group(1)
-             for match in re.finditer(pat. response.text)]
+             for match in re.finditer(pat, response.text)]
+
+    # separate README file
+    README = ""
     for i, link in enumerate(links):
         if 'readme' in link:
             README = link
             to_pop = i
             break
-    links = links.pop(to_pop)
+    if README:
+        links = links.pop(to_pop)
 
 
     # get readme file
-    path = os.path.join(RAW_PATH, 'readme.html')
-    response = requests.get(RAW_PATH + README)
-    with open(path, 'wb') as f:
-        f.write(response.content)
+    if README:
+        path = os.path.join(REF_PATH, 'readme.html')
+        response = requests.get(REF_PATH + README)
+        with open(path, 'wb') as f:
+            f.write(response.content)
 
     # get email files
     def fetch_data(file_):
@@ -46,7 +55,7 @@ def download_data():
 
         bz2_path = os.path.join(RAW_PATH, file_)
         with open(bz2_path, 'wb') as f:
-            f.write(r.content)
+            f.write(response.content)
             file_bz2 = tarfile.open(bz2_path)
             file_bz2.extractall(path=RAW_PATH)
             file_bz2.close()
@@ -55,6 +64,18 @@ def download_data():
     # fetch all the remaining files
     for link in links:
         fetch_data(link)
+
+
+def clean_up():
+    """
+    Remove by-products of file downloads.
+
+    """
+
+    for file in glob.glob(os.path.join(DATA_PATH, '*.bz2')):
+        os.remove(file)
+    for file in glob.glob(os.path.join(REF_PATH, '*.bz2')):
+        os.remove(file)
 
 
 #### EXTRACT DATA ####
@@ -110,6 +131,10 @@ def extract_emails():
 
     Note: 110 emails from the spam directories had unknown encodings
     and they are not included in the output.
+
+    :returns: a pair of lists containing tuples of the form (directory, list of emails).
+    The first tuple contains ham, the second contains spam.
+
     """
     dirs = [dir for dir in os.listdir(RAW_PATH)
             if not dir.endswith('.txt')]
@@ -126,12 +151,29 @@ def extract_emails():
 
 
 def pickle_emails(ham, spam):
-    """
-    Pickle the results of extract_emails() into the interim
+    """Pickle the results of extract_emails() into the interim
     data directory.
+
+
+    :param ham: ham output of extract_emails()
+    :param spam: spam output of extract_emails()
+
     """
     with open(os.path.join(INT_PATH, 'ham.pkl'), 'wb') as f:
         pickle.dump(ham, f)
 
     with open(os.path.join(INT_PATH, 'spam.pkl'), 'wb') as f:
         pickle.dump(spam, f)
+
+
+def main():
+    download_data()
+    clean_up()
+
+    ham, spam = extract_emails()
+    pickle_emails(ham, spam)
+
+
+
+if __name__='__main__':
+    main()

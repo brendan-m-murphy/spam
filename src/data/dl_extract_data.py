@@ -124,16 +124,12 @@ def read_data(dir, encoding_='utf-8'):
 
 def extract_emails():
     """
-    Return two lists, ham_emails and spam_emails,
-    that contain pairs of the form (dir_name, list_of_emails),
-    where dir_name is the name of a directory, and list_of_emails
-    is a list of emails in that directory as strings.
+    Return two lists containing ham and spam emails as strings.
 
     Note: 110 emails from the spam directories had unknown encodings
     and they are not included in the output.
 
-    :returns: a pair of lists containing tuples of the form (directory, list of emails).
-    The first tuple contains ham, the second contains spam.
+    :returns: a pair of lists containing containing ham and spam emails
 
     """
     dirs = [dir for dir in os.listdir(RAW_PATH)
@@ -146,8 +142,9 @@ def extract_emails():
 
     spam_emails= [read_data(dir) for dir in spam_dirs]
 
-
-    return list(zip(ham_dirs, ham_emails)), list(zip(spam_dirs, spam_emails))
+    ham = [email for sublist in ham_emails for email in sublist]
+    spam = [email for sublist in spam_emails for email in sublist]
+    return ham, spam
 
 
 def pickle_emails(ham, spam):
@@ -175,5 +172,5 @@ def main():
 
 
 
-if __name__='__main__':
+if __name__ == '__main__':
     main()

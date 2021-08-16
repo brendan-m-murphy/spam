@@ -141,28 +141,30 @@ def pickle_data(obj, path, filename):
         pickle.dump(obj, f)
 
 
-def train_test(data, ratio=0.2, shuffle=True, seed=42):
+def train_test(data, val_ratio=0.2, test_ratio=0.2, shuffle=True, seed=42):
     """Split a list into training and test sets, with specified ratio.
 
     By default, the data is shuffled with a fixed random seed.
     The data is not mutated.
 
     :param data: list of data objects
-    :param ratio: ratio of data to take for test set
+    :param val_ratio: ratio of data to take for validation set
+    :param test_ratio: ratio of data to take for test set
     :param shuffle: if true, the data is shuffled before being split
     :param seed: random seed for the shuffle
-    :returns: pair of lists (training set, test set)
+    :returns: triple of lists (training set, validation set, test set)
 
     """
     n = len(data)
-    k = math.floor(ratio * n)
+    k_val = math.floor((1 - val_ratio - test_ratio) * n)
+    k_test = math.floor((1 - test_ratio) * n)
     if shuffle:
         random.seed(42)
         data_shuffled = random.sample(data, k=n)
     else:
         data_shuffled = data
 
-    return data_shuffled[:k], data_shuffled[k:]
+    return data_shuffled[:k_val], data_shuffled[k_val:k_test], data_shuffled[k_test:]
 
 
 def main():
@@ -177,12 +179,14 @@ def main():
 
     ham, spam = extract_emails()
 
-    ham_train, ham_test = train_test(ham)
-    spam_train, spam_test = train_test(spam)
+    ham_train, ham_val, ham_test = train_test(ham)
+    spam_train, spam_val, spam_test = train_test(spam)
 
     pickle_data(ham_train, INT_PATH, 'ham_train.pkl')
+    pickle_data(ham_val, INT_PATH, 'ham_val.pkl')
     pickle_data(ham_test, INT_PATH, 'ham_test.pkl')
     pickle_data(spam_train, INT_PATH, 'spam_train.pkl')
+    pickle_data(spam_val, INT_PATH, 'spam_val.pkl')
     pickle_data(spam_test, INT_PATH, 'spam_test.pkl')
 
 

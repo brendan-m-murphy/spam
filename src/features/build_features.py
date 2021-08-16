@@ -1,13 +1,24 @@
+import email
+import email.parser
+import email.policy
 import pandas as pd
 import re
 
 
-def clean1(email):
+def clean1(email_):
     pat = re.compile(r'([-\w]+: .+|<.*|.*>|.*NextPart.*|charset=.*|\w+\.\w+\.?\w*\.?\w*\.?\w*)')
-    email2 = pat.sub(' ', email)
+    return pat.sub(' ', email_)
+
+
+def clean2(email_):
+    msg = email.parser.Parser(policy=email.policy.default).parsestr(email_)
+    return msg.get_content()
+
+
+def get_words(email, exclude_below=2):
     return [x.lower()
-            for x in re.findall(r'[A-Za-z]+', email2)
-            if len(x) > 2]
+            for x in re.findall(r'[A-Za-z]+', email)
+            if len(x) > exclude_below]
 
 def create_corpus(f, X):
     "X training set, f maps email to list of words"
@@ -17,7 +28,8 @@ def create_corpus(f, X):
             corpus[word] = corpus.get(word, 0) + 1
     return corpus
 
-def create_df(X, word_freq):
+def create_df(X, corpus):
+    word_freq = pd.Series(corpus)
     template = {k: 0 for k in sorted(word_freq.index.to_list())}
     keys = template.keys()
 
@@ -32,6 +44,3 @@ def create_df(X, word_freq):
                        for i, email in enumerate(X)})
 
     return df.T
-
-word_freq = pd.Series(create_corpus(clean1, X_train))
-filt = word_freq.between(6, 900)

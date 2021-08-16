@@ -20,64 +20,43 @@ def download_data():
     """
     Download Apache spamassassin data and unzip it raw data directory.
     """
-    DL_ROOT = 'https://spamassassin.apache.org/old/publiccorpus'
+    DL_ROOT = 'https://spamassassin.apache.org/old/publiccorpus/'
 
-    # get file names
-    response = requests.get(DL_ROOT)
-    pat = re.compile('<a href=[\'"]([\w\._]+)["\']([\w\._]+)</a>')
-    links = [match.group(1)
-             for match in re.finditer(pat, response.text)]
-
-    # separate README file
-    README = ""
-    for i, link in enumerate(links):
-        if 'readme' in link:
-            README = link
-            to_pop = i
-            break
-    if README:
-        links = links.pop(to_pop)
-
+    # file names
+    ham_tars = ['20030228_hard_ham.tar.bz2', '20030228_easy_ham_2.tar.bz2', '20030228_easy_ham.tar.bz2']
+    spam_tars = ['20050311_spam_2.tar.bz2', '20030228_spam.tar.bz2']
 
     # get readme file
-    if README:
-        path = os.path.join(REF_PATH, 'readme.html')
-        response = requests.get(REF_PATH + README)
-        with open(path, 'wb') as f:
-            f.write(response.content)
+    path = os.path.join(REF_PATH, 'readme.html')
+    response = requests.get(DL_ROOT + 'readme.html')
+    with open(path, 'wb') as f:
+        f.write(response.content)
 
     # get email files
-    def fetch_data(file_):
+    def fetch_data(file_, extract_path=RAW_PATH):
         """
         Download file_, write the contents to the raw data
         directory, unzip, remove .bz2 file.
         """
         DL_URL = DL_ROOT + file_
         response = requests.get(DL_URL)
-
         bz2_path = os.path.join(RAW_PATH, file_)
         with open(bz2_path, 'wb') as f:
             f.write(response.content)
-            file_bz2 = tarfile.open(bz2_path)
-            file_bz2.extractall(path=RAW_PATH)
-            file_bz2.close()
+        with tarfile.open(bz2_path) as file_bz2:
+            file_bz2.extractall(path=extract_path)
         os.remove(bz2_path)
 
     # fetch all the remaining files
-    for link in links:
-        fetch_data(link)
+    ham_extract = os.path.join(RAW_PATH, 'ham')
+    os.makedirs(ham_extract, exist_ok=True)
+    for link in ham_tars:
+        fetch_data(link, ham_extract)
 
-
-def clean_up():
-    """
-    Remove by-products of file downloads.
-
-    """
-
-    for file in glob.glob(os.path.join(DATA_PATH, '*.bz2')):
-        os.remove(file)
-    for file in glob.glob(os.path.join(REF_PATH, '*.bz2')):
-        os.remove(file)
+    spam_extract = os.path.join(RAW_PATH, 'spam')
+    os.makedirs(spam_extract, exist_ok=True)
+    for link in spam_tars:
+        fetch_data(link, spam_extract)
 
 
 #### EXTRACT DATA ####
@@ -114,6 +93,8 @@ def read_data(dir, encoding_='utf-8'):
                 with open(file_path, 'r',
                           encoding=get_encoding(file_path)) as f:
                     email.append(f.read())
+            except LookupError:
+                pass
             except UnicodeError:
                 try:
                     with open(file_path, 'r',
@@ -134,22 +115,20 @@ def extract_emails():
     :returns: a pair of lists containing containing ham and spam emails
 
     """
-    dirs = [dir for dir in os.listdir(RAW_PATH)
-            if not dir.endswith('.txt')]
-    ham_dirs = [dir for dir in dirs if 'ham' in dir]
-    spam_dirs = [dir for dir in dirs if 'spam' in dir]
+    ham_dirs = [dir for dir in os.listdir(os.path.join(RAW_PATH, 'ham'))]
+    spam_dirs = [dir for dir in os.listdir(os.path.join(RAW_PATH, 'spam'))]
 
-    ham_emails = [read_data(dir, encoding_='windows-1252')
+    ham_emails = [read_data(os.path.join('ham', dir), encoding_='windows-1252')
                   for dir in ham_dirs]
 
-    spam_emails= [read_data(dir) for dir in spam_dirs]
+    spam_emails= [read_data(os.path.join('spam', dir)) for dir in spam_dirs]
 
     ham = [email for sublist in ham_emails for email in sublist]
     spam = [email for sublist in spam_emails for email in sublist]
     return ham, spam
 
 
-def pickle(obj, path, filename):
+def pickle_data(obj, path, filename):
     """Pickle the object obj in the directory path with specified filename.
 
     :param obj: object to pickle
@@ -195,16 +174,17 @@ def main():
 
     """
     download_data()
-    clean_up()
 
     ham, spam = extract_emails()
+
     ham_train, ham_test = train_test(ham)
     spam_train, spam_test = train_test(spam)
 
-    pickle(ham_train, INT_PATH, 'ham_train.pkl')
-    pickle(ham_test, INT_PATH, 'ham_test.pkl')
-    pickle(spam_train, INT_PATH, 'spam_train.pkl')
-    pickle(spam_test, INT_PATH, 'spam_test.pkl')
+    pickle_data(ham_train, INT_PATH, 'ham_train.pkl')
+    pickle_data(ham_test, INT_PATH, 'ham_test.pkl')
+    pickle_data(spam_train, INT_PATH, 'spam_train.pkl')
+    pickle_data(spam_test, INT_PATH, 'spam_test.pkl')
+
 
 
 if __name__ == '__main__':

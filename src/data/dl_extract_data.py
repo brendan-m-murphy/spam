@@ -1,6 +1,8 @@
 import glob
+import math
 import os
 import pickle
+import random
 import re
 import requests
 import subprocess
@@ -147,29 +149,62 @@ def extract_emails():
     return ham, spam
 
 
-def pickle_emails(ham, spam):
-    """Pickle the results of extract_emails() into the interim
-    data directory.
+def pickle(obj, path, filename):
+    """Pickle the object obj in the directory path with specified filename.
 
-
-    :param ham: ham output of extract_emails()
-    :param spam: spam output of extract_emails()
+    :param obj: object to pickle
+    :param path: string or path-like object, path to directory for output
+    :param filename: string, name of pickle file output
 
     """
-    with open(os.path.join(INT_PATH, 'ham.pkl'), 'wb') as f:
-        pickle.dump(ham, f)
+    assert(filename.endswith('.pkl'))
+    with open(os.path.join(path, filename), 'wb') as f:
+        pickle.dump(obj, f)
 
-    with open(os.path.join(INT_PATH, 'spam.pkl'), 'wb') as f:
-        pickle.dump(spam, f)
+
+def train_test(data, ratio=0.2, shuffle=True, seed=42):
+    """Split a list into training and test sets, with specified ratio.
+
+    By default, the data is shuffled with a fixed random seed.
+    The data is not mutated.
+
+    :param data: list of data objects
+    :param ratio: ratio of data to take for test set
+    :param shuffle: if true, the data is shuffled before being split
+    :param seed: random seed for the shuffle
+    :returns: pair of lists (training set, test set)
+
+    """
+    n = len(data)
+    k = math.floor(ratio * n)
+    if shuffle:
+        random.seed(42)
+        data_shuffled = random.sample(data, k=n)
+    else:
+        data_shuffled = data
+
+    return data_shuffled[:k], data_shuffled[k:]
 
 
 def main():
+    """Download and extract data, pickle the results.#!/usr/bin/env python
+
+    Data is downloaded to the raw data folder, the README file is downloaded
+    to references, and the ham and spam emails are split into train and test sets,
+    then pickled in the interim data folder.
+
+    """
     download_data()
     clean_up()
 
     ham, spam = extract_emails()
-    pickle_emails(ham, spam)
+    ham_train, ham_test = train_test(ham)
+    spam_train, spam_test = train_test(spam)
 
+    pickle(ham_train, INT_PATH, 'ham_train.pkl')
+    pickle(ham_test, INT_PATH, 'ham_test.pkl')
+    pickle(spam_train, INT_PATH, 'spam_train.pkl')
+    pickle(spam_test, INT_PATH, 'spam_test.pkl')
 
 
 if __name__ == '__main__':

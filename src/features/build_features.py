@@ -1,8 +1,31 @@
 import email
+import email.policy
 import nltk
 import pandas as pd
+import pickle
+import random
 import re
 from sklearn.base import BaseEstimator, TransformerMixin
+
+
+def unzip(x):
+    y, z = zip(*x)
+    return list(y), list(z)
+
+
+def get_raw_data(type='train', path='../../data/interim/', seed=42):
+    if type in ('train', 'val', 'test'):
+        with open(path + f'ham_{type}.pkl', 'rb') as f:
+            ham = pickle.load(f)
+        with open(path + f'spam_{type}.pkl', 'rb') as f:
+            spam = pickle.load(f)
+        raw = [(x, 0) for x in ham] + [(x, 1) for x in spam]
+        random.seed(seed)
+        random.shuffle(raw)
+        X, y = unzip(raw)
+        return X, pd.Series(y)
+    else:
+        raise ValueError(f'Type "{type}" not recognized. Please enter "train", "val", or "test".')
 
 
 def clean1(email_):
@@ -27,9 +50,9 @@ def clean2(mail):
 
 def get_words(email, exclude_below=2, stemming=False):
     result = [x.lower()
-            for x in re.findall(r'[A-Za-z]+', email)
-            if len(x) > exclude_below]
-     if stemming:
+              for x in re.findall(r'[A-Za-z]+', email)
+              if len(x) > exclude_below]
+    if stemming:
         porter = nltk.PorterStemmer()
         result = [porter.stem(t) for t in result]
 
@@ -73,13 +96,39 @@ def create_df(X, corpus, cleaner=clean2, tokenizer=get_words, lower=None, upper=
     return df.T
 
 
+def bisection_search(x, L):
+    """Bisection search for element x in ordered list L
+
+    :param x: object of type comparable to elements of L
+    :param L: list of objects sorted in ascending order
+    :returns: True if x is in L, false otherwise
+
+    """
+    if len(L) == 0:
+        return False
+    else:
+        point = len(L) // 2
+        if x == L[point]:
+            return True
+        elif x > L[point]:
+            return bisection_search(x, L[point + 1:])
+        else:
+            return bisection_search(x, L[:point])
+
+
 class BagOfWords(BaseEstimator, TransformerMixin):
-    def __init__(self, exclude_words=[], high=1.0, low=0.0, stemming=False) -> None:
+    def __init__(self, exclude_words=[], high_rel=1.0, low_rel=0.0,
+                 high_abs=None, low_abs=0, stemming=False) -> None:
         self.word_freq = None
         self.corpus = []
+        self.working_word_freq = None
+        self.working_corpus = []
         self.exclude_words = exclude_words
-        self.high = high
-        self.low = low
+        self.max_freq = None
+        self.high_rel = high_rel
+        self.low_rel = low_rel
+        self.high_abs = high_abs
+        self.low_abs = low_abs
         self.stemming = stemming
 
     def fit(self, X, y=None):
@@ -92,15 +141,44 @@ class BagOfWords(BaseEstimator, TransformerMixin):
 
         """
         corpus = create_corpus(lambda x: get_words(clean2(x), stemming=self.stemming), X)
-        for word in self.exclude_words:
-            if word in corpus:
-                del corpus[word]
 
-        word_freq = pd.Series(corpus)
-        filt = word_freq.betwee(self.low, self.high)
-        self.word_freq = word_freq[filt]
-
+        self.word_freq = pd.Series(corpus).sort_index(ascending=True)
         self.corpus = self.word_freq.index.to_list()
+        self.max_freq = self.word_freq.max()
+
+        if self.high_abs is None:
+            self.high_abs = self.max_freq + 1
+
+        filt1 = self.word_freq.isin(self.exclude_words)
+        filt2 = self.word_freq.between(max(self.low_abs, self.low_rel * self.max_freq),
+                                       min(self.high_abs, self.high_rel * self.max_freq))
+
+        self.working_word_freq = self.word_freq[~filt1 & filt2]
+        self.working_corpus = self.working_word_freq.index.to_list()
+
+        return self
+
+
+    def set_filters(self, exclude_words=None,
+                    high_rel=None, low_rel=None,
+                    high_abs=None, low_abs=None):
+        if high_rel:
+            self.high_rel = high_rel
+        if low_rel:
+            self.low_rel = low_rel
+        if high_abs:
+            self.high_abs = high_abs
+        if low_abs:
+            self.low_abs = low_abs
+        if exclude_words:
+            self.exclude_words = exclude_words
+
+        filt1 = self.word_freq.isin(self.exclude_words)
+        filt2 = self.word_freq.between(max(self.low_abs, self.low_rel * self.max_freq),
+                                       min(self.high_abs, self.high_rel * self.max_freq))
+
+        self.working_word_freq = self.word_freq[~filt1 & filt2]
+        self.working_corpus = self.working_word_freq.index.to_list()
 
 
     def transform(self, X, y=None):
@@ -120,10 +198,9 @@ class BagOfWords(BaseEstimator, TransformerMixin):
             :returns: a pandas Series with the vector encoding of the words in text
 
             """
-
-            vec = self.word_freq * 0
+            vec = self.working_word_freq * 0
             for x in get_words(clean2(text), stemming=self.stemming):
-                if x in self.corpus:
+                if bisection_search(x, self.working_corpus):
                     vec[x] = 1
             return vec
 
